@@ -1,0 +1,1003 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>飛航公告內容雙向翻譯 | NOTAM Translator</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+TC:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    body {
+      font-family: 'Inter', 'Noto Sans TC', system-ui, -apple-system, sans-serif;
+    }
+    .font-mono-code {
+      font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-800 min-h-screen flex flex-col">
+  <!-- Minimal Header -->
+  <header class="bg-slate-900 text-white border-b border-slate-800">
+    <div class="max-w-3xl mx-auto px-4 py-3.5 flex items-center justify-between gap-3">
+      <div class="flex items-center gap-2.5">
+        <div class="w-8 h-8 rounded-lg bg-sky-500/20 border border-sky-400/30 flex items-center justify-center text-sky-300 shrink-0">
+          <i data-lucide="plane-takeoff" class="w-4 h-4"></i>
+        </div>
+        <div>
+          <h1 class="text-base font-bold tracking-tight leading-tight">飛航公告內容雙向翻譯</h1>
+          <p class="text-xs text-slate-400">完整 ICAO / FAA 縮寫字庫 · 輸入中文轉英文內容 · 輸入英文即時快選轉中文</p>
+        </div>
+      </div>
+      <span id="dictCountBadge" class="hidden sm:inline-flex items-center text-[11px] font-mono-code bg-slate-800 text-sky-300 px-2.5 py-1 rounded-md border border-slate-700"></span>
+    </div>
+  </header>
+
+  <!-- Simple Single-Box Workspace -->
+  <main class="flex-1 max-w-3xl w-full mx-auto px-4 py-6 space-y-4">
+    <section class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+      <!-- Top Status & Samples -->
+      <div class="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2">
+        <div class="flex items-center gap-2">
+          <span id="directionBadge" class="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-slate-200 text-slate-700">
+            <i data-lucide="arrow-left-right" class="w-3.5 h-3.5"></i>
+            <span id="directionText">自動偵測：等待輸入</span>
+          </span>
+          <button id="toggleDirBtn" type="button" class="text-xs text-slate-500 hover:text-slate-800 underline underline-offset-2 cursor-pointer">
+            切換方向
+          </button>
+        </div>
+        <div class="flex items-center gap-1.5 text-xs">
+          <span class="text-slate-400 hidden sm:inline">範例：</span>
+          <button type="button" data-sample="cn1" class="sample-btn px-2 py-1 rounded-md bg-white border border-slate-200 hover:border-sky-400 hover:text-sky-700 text-slate-600 transition cursor-pointer">
+            中文範例
+          </button>
+          <button type="button" data-sample="en1" class="sample-btn px-2 py-1 rounded-md bg-white border border-slate-200 hover:border-emerald-400 hover:text-emerald-700 text-slate-600 transition cursor-pointer">
+            英文範例
+          </button>
+        </div>
+      </div>
+
+      <!-- Input Box -->
+      <div class="p-4 space-y-3">
+        <label for="notamInput" class="sr-only">輸入飛航公告內容</label>
+        <textarea
+          id="notamInput"
+          rows="5"
+          spellcheck="false"
+          placeholder="請輸入中文（例如：新竹機場 05/23 跑道因施工關閉，軍機除外，航機可能延誤）&#10;或直接輸入英文 NOTAM 內容（打字時下方會即時優先跳出相符的快選單字）"
+          class="w-full resize-y min-h-[130px] rounded-xl border border-slate-300 focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 outline-none p-3.5 text-sm sm:text-base leading-relaxed font-mono-code placeholder:font-sans placeholder:text-slate-400 bg-white transition"
+        ></textarea>
+
+        <!-- Dynamic English Quick-Pick Bar -->
+        <div id="autocompleteBar" class="hidden rounded-xl bg-sky-50/90 border border-sky-200 p-2.5">
+          <div class="flex items-center justify-between gap-2 mb-2">
+            <span class="text-xs font-semibold text-sky-900 flex items-center gap-1.5">
+              <i data-lucide="zap" class="w-3.5 h-3.5 text-sky-600"></i>
+              <span>快選單字（點擊插入，或按 <kbd class="px-1.5 py-0.5 bg-white border border-sky-300 rounded text-[10px]">Tab</kbd> 選第一項）</span>
+            </span>
+            <span id="typingTokenLabel" class="text-xs font-mono-code text-sky-700 font-semibold"></span>
+          </div>
+          <div id="autocompleteList" class="flex flex-wrap gap-1.5"></div>
+        </div>
+
+        <div id="idleHint" class="text-xs text-slate-400 flex items-center gap-1.5">
+          <i data-lucide="keyboard" class="w-3.5 h-3.5"></i>
+          <span>輸入英文單字時，下方會即時優先跳出相符的 ICAO / FAA 飛航公告縮寫供快速點選。</span>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="pt-1 flex flex-wrap items-center justify-between gap-3">
+          <div class="flex items-center gap-2">
+            <button id="clearBtn" type="button" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs sm:text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 transition cursor-pointer">
+              <i data-lucide="trash-2" class="w-4 h-4"></i>
+              清除
+            </button>
+            <span class="text-xs text-slate-400 hidden sm:inline"><kbd class="px-1.5 py-0.5 bg-slate-100 border border-slate-200 rounded text-[11px]">Ctrl</kbd> + <kbd class="px-1.5 py-0.5 bg-slate-100 border border-slate-200 rounded text-[11px]">Enter</kbd></span>
+          </div>
+          <button id="translateBtn" type="button" class="inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-sm sm:text-base font-semibold text-white bg-sky-600 hover:bg-sky-700 active:scale-[0.99] shadow-sm shadow-sky-600/20 transition cursor-pointer w-full sm:w-auto">
+            <i data-lucide="languages" class="w-4 h-4"></i>
+            <span>翻譯</span>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Single Clean Output Box -->
+    <section id="outputCard" class="hidden bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+      <div class="px-4 py-2.5 bg-slate-900 text-white flex items-center justify-between gap-2">
+        <div class="flex items-center gap-2">
+          <i data-lucide="file-text" class="w-4 h-4 text-sky-400"></i>
+          <span id="outputTitle" class="text-xs sm:text-sm font-semibold">翻譯結果</span>
+        </div>
+        <button id="copyBtn" type="button" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition cursor-pointer">
+          <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+          <span id="copyBtnText">複製</span>
+        </button>
+      </div>
+      <div class="p-4">
+        <pre id="outputText" class="whitespace-pre-wrap break-words text-sm sm:text-base leading-relaxed font-mono-code bg-slate-50 border border-slate-200 rounded-xl p-4 text-slate-900"></pre>
+      </div>
+    </section>
+  </main>
+
+  <!-- Toast -->
+  <div id="toast" class="fixed bottom-5 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-xs sm:text-sm px-4 py-2 rounded-full shadow-lg opacity-0 pointer-events-none transition-opacity duration-200 z-50"></div>
+
+  <script>
+    // =========================================================================
+    // 1. Comprehensive ICAO Doc 8400 & FAA JO 7340.2 / 7930.2U NOTAM Database
+    // =========================================================================
+    const TAIWAN_AIRPORTS = [
+      { code: 'RCPO', zh: '新竹機場', aliases: ['新竹', '新竹機場', '新竹基地'] },
+      { code: 'RCTP', zh: '桃園機場', aliases: ['桃園', '桃園機場', '臺灣桃園國際機場'] },
+      { code: 'RCSS', zh: '松山機場', aliases: ['松山', '松山機場', '臺北松山機場'] },
+      { code: 'RCMQ', zh: '清泉崗機場', aliases: ['台中', '臺中', '清泉崗', '臺中機場'] },
+      { code: 'RCKH', zh: '高雄機場', aliases: ['高雄', '小港', '高雄機場'] },
+      { code: 'RCNN', zh: '臺南機場', aliases: ['台南', '臺南', '臺南機場'] },
+      { code: 'RCYU', zh: '花蓮機場', aliases: ['花蓮', '花蓮機場'] },
+      { code: 'RCFN', zh: '臺東豐年機場', aliases: ['台東', '臺東', '豐年'] },
+      { code: 'RCKU', zh: '嘉義機場', aliases: ['嘉義', '水上'] },
+      { code: 'RCQC', zh: '澎湖機場', aliases: ['澎湖', '馬公'] },
+      { code: 'RCBS', zh: '金門機場', aliases: ['金門', '尚義'] },
+      { code: 'RCSQ', zh: '屏東機場', aliases: ['屏東', '屏東機場'] },
+      { code: 'RCAY', zh: '岡山機場', aliases: ['岡山', '空軍官校'] },
+      { code: 'RCDC', zh: '屏東龍勤機場', aliases: ['龍勤'] },
+      { code: 'RCGI', zh: '綠島機場', aliases: ['綠島'] },
+      { code: 'RCLY', zh: '蘭嶼機場', aliases: ['蘭嶼'] },
+      { code: 'RCMT', zh: '北竿機場', aliases: ['北竿'] },
+      { code: 'RCFG', zh: '南竿機場', aliases: ['南竿', '馬祖'] },
+      { code: 'RCKW', zh: '恆春機場', aliases: ['恆春'] },
+      { code: 'RCSP', zh: '太平島機場', aliases: ['太平島', '太平'] },
+      { code: 'RCAA', zh: '臺北飛航情報區', aliases: ['台北飛航情報區', '臺北飛航情報區', '台北FIR', '情報區'] }
+    ];
+
+    // 250+ ICAO/FAA NOTAM contractions, terms, and standard words
+    const NOTAM_DICT = [
+      // Surfaces & Aerodrome Movement Areas
+      { en: 'RWY', zh: '跑道' },
+      { en: 'TWY', zh: '滑行道' },
+      { en: 'APRON', zh: '停機坪' },
+      { en: 'APN', zh: '停機坪' },
+      { en: 'RAMP', zh: '停機坪/機坪' },
+      { en: 'THR', zh: '跑道頭/入口' },
+      { en: 'DISPLACED THR', zh: '內移跑道頭' },
+      { en: 'DTHR', zh: '內移跑道頭' },
+      { en: 'PARL', zh: '平行' },
+      { en: 'SHD', zh: '道肩' },
+      { en: 'SHOULDER', zh: '道肩' },
+      { en: 'SWY', zh: '停止道' },
+      { en: 'STOPWAY', zh: '停止道' },
+      { en: 'CWY', zh: '淨空道' },
+      { en: 'CLEARWAY', zh: '淨空道' },
+      { en: 'RESA', zh: '跑道端安全區' },
+      { en: 'RCL', zh: '跑道中心線' },
+      { en: 'CL', zh: '中心線' },
+      { en: 'TDZ', zh: '著陸區' },
+      { en: 'RUNUP PAD', zh: '試車坪' },
+      { en: 'HELIPAD', zh: '直升機起降坪' },
+      { en: 'HEL', zh: '直升機' },
+      { en: 'HELI', zh: '直升機' },
+      { en: 'PAD', zh: '坪/停機位' },
+      { en: 'SPOT', zh: '機位' },
+      { en: 'STAND', zh: '停機位' },
+      { en: 'GATE', zh: '登機門' },
+      { en: 'BAY', zh: '機棚/停機區' },
+      { en: 'HANGAR', zh: '機棚' },
+      { en: 'TERMINAL', zh: '航廈' },
+      { en: 'INT', zh: '交叉口' },
+      { en: 'INTERSECTION', zh: '交叉口' },
+      { en: 'NONMOVEMENT AREA', zh: '非活動區' },
+      { en: 'MOVEMENT AREA', zh: '活動區' },
+      { en: 'MANEUVERING AREA', zh: '操作區' },
+      { en: 'AD', zh: '機場' },
+      { en: 'AERODROME', zh: '機場' },
+      { en: 'TODA', zh: '可用起飛距離' },
+      { en: 'TORA', zh: '可用起飛滾行距離' },
+      { en: 'ASDA', zh: '可用加速停止距離' },
+      { en: 'LDA', zh: '可用降落距離' },
+      { en: 'PCN', zh: '道面分類號' },
+      { en: 'ACN', zh: '航空器分類號' },
+      { en: 'SFC', zh: '道面/地表' },
+      { en: 'IRREGULAR SFC', zh: '道面不平整' },
+
+      // Lighting & Visual Aids
+      { en: 'LGT', zh: '燈光' },
+      { en: 'LGTD', zh: '有燈光標示' },
+      { en: 'NOT LGTD', zh: '無燈光標示' },
+      { en: 'UNLGTD', zh: '無燈光' },
+      { en: 'EDGE LGT', zh: '邊燈' },
+      { en: 'ALS', zh: '進場燈光系統' },
+      { en: 'ALSF', zh: '進場閃光燈光系統' },
+      { en: 'MALS', zh: '中強度進場燈光系統' },
+      { en: 'MALSR', zh: '中強度進場及跑道對正燈' },
+      { en: 'ODALS', zh: '全向進場燈光系統' },
+      { en: 'PAPI', zh: '精確進場滑降燈' },
+      { en: 'VASI', zh: '目視進場滑降指示燈' },
+      { en: 'REIL', zh: '跑道端識別燈' },
+      { en: 'HIRL', zh: '高強度跑道燈' },
+      { en: 'MIRL', zh: '中強度跑道燈' },
+      { en: 'LIRL', zh: '低強度跑道燈' },
+      { en: 'RCLL', zh: '跑道中心線燈' },
+      { en: 'TDZL', zh: '著陸區燈' },
+      { en: 'BCN', zh: '機場燈標' },
+      { en: 'ABN', zh: '機場燈標' },
+      { en: 'SFL', zh: '順序閃光燈' },
+      { en: 'RTIL', zh: '跑道頭識別燈' },
+      { en: 'WDI', zh: '風向指示器' },
+      { en: 'WINDCONE', zh: '風向袋' },
+
+      // Navigation, Surveillance & Communication
+      { en: 'NAVAID', zh: '助導航設施' },
+      { en: 'ILS', zh: '儀器降落系統' },
+      { en: 'LOC', zh: '左右定位臺' },
+      { en: 'GP', zh: '滑降臺' },
+      { en: 'GS', zh: '滑降臺' },
+      { en: 'OM', zh: '外指點標' },
+      { en: 'MM', zh: '中指點標' },
+      { en: 'IM', zh: '內指點標' },
+      { en: 'LOM', zh: '外指點標歸航臺' },
+      { en: 'VOR', zh: '特高頻多向導航臺' },
+      { en: 'DME', zh: '測距儀' },
+      { en: 'TACAN', zh: '戰術空中導航儀' },
+      { en: 'VORTAC', zh: '多向與戰術導航臺' },
+      { en: 'NDB', zh: '歸航臺' },
+      { en: 'GNSS', zh: '全球衛星導航系統' },
+      { en: 'GPS', zh: '全球定位系統' },
+      { en: 'RAIM', zh: '接收機自主完好性監測' },
+      { en: 'RNAV', zh: '區域航行' },
+      { en: 'RNP', zh: '所需導航性能' },
+      { en: 'RADAR', zh: '雷達' },
+      { en: 'PSR', zh: '一次監視雷達' },
+      { en: 'SSR', zh: '二次監視雷達' },
+      { en: 'ADS-B', zh: '廣播式自動相關監視' },
+      { en: 'RVR', zh: '跑道視程' },
+      { en: 'COM', zh: '通信' },
+      { en: 'FREQ', zh: '頻率' },
+      { en: 'CH', zh: '波道' },
+      { en: 'MHZ', zh: '兆赫' },
+      { en: 'KHZ', zh: '千赫' },
+      { en: 'VHF', zh: '特高頻' },
+      { en: 'UHF', zh: '超高頻' },
+      { en: 'HF', zh: '高頻' },
+      { en: 'EMERG', zh: '緊急' },
+
+      // ATC, Procedures & Airspace
+      { en: 'ATC', zh: '飛航管制' },
+      { en: 'TWR', zh: '塔臺' },
+      { en: 'APP', zh: '近場管制臺' },
+      { en: 'ACC', zh: '區域管制中心' },
+      { en: 'FIC', zh: '飛航情報中心' },
+      { en: 'FSS', zh: '飛航服務站' },
+      { en: 'ATIS', zh: '終端自動情報廣播' },
+      { en: 'D-ATIS', zh: '數位終端自動情報廣播' },
+      { en: 'CLNC', zh: '許可' },
+      { en: 'DEL', zh: '許可頒發' },
+      { en: 'FIR', zh: '飛航情報區' },
+      { en: 'TMA', zh: '終端管制區' },
+      { en: 'CTR', zh: '管制地帶' },
+      { en: 'ATZ', zh: '機場交通地帶' },
+      { en: 'CTA', zh: '管制區' },
+      { en: 'AWY', zh: '航路' },
+      { en: 'ATS', zh: '飛航服務' },
+      { en: 'SID', zh: '標準儀器離場' },
+      { en: 'STAR', zh: '標準儀器到場' },
+      { en: 'IAP', zh: '儀器進場程序' },
+      { en: 'IFP', zh: '儀器飛航程序' },
+      { en: 'APCH', zh: '進場' },
+      { en: 'ARR', zh: '到場/降落' },
+      { en: 'DEP', zh: '離場/起飛' },
+      { en: 'LDG', zh: '降落' },
+      { en: 'TKOF', zh: '起飛' },
+      { en: 'TAX', zh: '滑行' },
+      { en: 'ENRT', zh: '航路中' },
+      { en: 'DCT', zh: '直飛' },
+      { en: 'HOLD', zh: '等待/盤旋' },
+      { en: 'REROUTE', zh: '改道' },
+      { en: 'TRA', zh: '臨時保留空域' },
+      { en: 'TSA', zh: '臨時隔離空域' },
+      { en: 'TFR', zh: '臨時飛航限制區' },
+      { en: 'IFR', zh: '儀器飛航規則' },
+      { en: 'VFR', zh: '目視飛航規則' },
+      { en: 'IMC', zh: '儀器氣象條件' },
+      { en: 'VMC', zh: '目視氣象條件' },
+      { en: 'MDA', zh: '最低下降高度' },
+      { en: 'DA', zh: '決斷高度' },
+      { en: 'DH', zh: '決斷高' },
+      { en: 'MNM', zh: '最低' },
+      { en: 'MIN', zh: '最低/分鐘' },
+      { en: 'MAX', zh: '最高/最大' },
+
+      // Status, Actions & Conditions
+      { en: 'CLSD', zh: '關閉' },
+      { en: 'CLOSED', zh: '關閉' },
+      { en: 'OPN', zh: '開放' },
+      { en: 'OPEN', zh: '開放' },
+      { en: 'U/S', zh: '故障/無法使用' },
+      { en: 'UNSERVICEABLE', zh: '故障/無法使用' },
+      { en: 'UNREL', zh: '不可靠' },
+      { en: 'UNUSABLE', zh: '無法使用' },
+      { en: 'USABLE', zh: '可使用' },
+      { en: 'UNSAFE', zh: '不安全' },
+      { en: 'AVBL', zh: '可用' },
+      { en: 'NOT AVBL', zh: '不可用' },
+      { en: 'UNAVBL', zh: '不可用' },
+      { en: 'WIP', zh: '施工中' },
+      { en: 'MAINT', zh: '維護/保養' },
+      { en: 'CONSTR', zh: '施工/建設' },
+      { en: 'CONST', zh: '施工/建設' },
+      { en: 'REPAIR', zh: '修復/搶修' },
+      { en: 'RESURFACING', zh: '重鋪道面' },
+      { en: 'PAINTING', zh: '標線漆劃' },
+      { en: 'MOWING', zh: '割草作業' },
+      { en: 'SWEEPING', zh: '清掃作業' },
+      { en: 'INSPECTION', zh: '巡檢/檢查' },
+      { en: 'CALIBRATION', zh: '校驗' },
+      { en: 'FLT CHECK', zh: '飛測' },
+      { en: 'FLIGHT CHECK', zh: '飛測' },
+      { en: 'ON TEST', zh: '測試中' },
+      { en: 'DO NOT USE', zh: '請勿使用' },
+      { en: 'DUE TO', zh: '因/由於' },
+      { en: 'OPR', zh: '運作/操作' },
+      { en: 'OPS', zh: '作業/運作' },
+      { en: 'NML', zh: '正常' },
+      { en: 'RESUMED', zh: '恢復' },
+      { en: 'RESUMED NML OPS', zh: '恢復正常運作' },
+      { en: 'RTS', zh: '恢復服務' },
+      { en: 'SVC', zh: '服務' },
+      { en: 'ACT', zh: '生效/啟用/活動' },
+      { en: 'DEACT', zh: '解除/停用' },
+      { en: 'CNL', zh: '取消' },
+      { en: 'AMD', zh: '修訂' },
+      { en: 'AMDT', zh: '修訂版' },
+      { en: 'CHANGED TO', zh: '變更為' },
+      { en: 'REPLACED BY', zh: '由…取代' },
+      { en: 'DCMSND', zh: '除役/撤除' },
+      { en: 'ESTAB', zh: '設立/建立' },
+      { en: 'ERECTED', zh: '架設' },
+      { en: 'REMOVED', zh: '移除' },
+      { en: 'SUSPENDED', zh: '暫停' },
+      { en: 'DLA', zh: '延誤' },
+      { en: 'DELAYED', zh: '延誤' },
+      { en: 'BLOCKED', zh: '封鎖/阻斷' },
+      { en: 'PROHIBITED', zh: '禁止' },
+      { en: 'RESTRICTED', zh: '限制' },
+      { en: 'LIMITED', zh: '受限' },
+      { en: 'FLAGGED', zh: '插旗標示' },
+      { en: 'BARRICADED', zh: '設有圍籬/阻材' },
+      { en: 'MARKED', zh: '有標示' },
+      { en: 'NOT MARKED', zh: '無標示' },
+      { en: 'NOT STD', zh: '非標準' },
+      { en: 'OBSC', zh: '遮蔽/模糊' },
+      { en: 'CTN', zh: '注意' },
+      { en: 'HAZ', zh: '危害/危險' },
+      { en: 'AVOID', zh: '避讓' },
+      { en: 'ADZ', zh: '通知/建議' },
+      { en: 'CTC', zh: '聯絡' },
+      { en: 'REQ', zh: '需求/請求' },
+      { en: 'PPR', zh: '須事先申請許可' },
+      { en: 'PN', zh: '須事先通知' },
+      { en: 'O/R', zh: '依請求提供' },
+      { en: 'SKED', zh: '定時/排定' },
+      { en: 'UNSKED', zh: '非定時' },
+      { en: 'WILL TAKE PLACE', zh: '將實施' },
+      { en: 'CLRD', zh: '清除/許可' },
+
+      // Hazards, Military, Weather & Wildlife
+      { en: 'OBST', zh: '障礙物' },
+      { en: 'CRANE', zh: '起重機/吊車' },
+      { en: 'TOWER', zh: '鐵塔/高塔' },
+      { en: 'BLDG', zh: '建築物' },
+      { en: 'ANTENNA', zh: '天線' },
+      { en: 'MAST', zh: '桅桿' },
+      { en: 'GUN FRNG', zh: '火砲射擊' },
+      { en: 'FRNG', zh: '射擊' },
+      { en: 'AIR EXER', zh: '空中演習' },
+      { en: 'EXER', zh: '演習' },
+      { en: 'UNMANNED', zh: '無人機' },
+      { en: 'UAS', zh: '無人機系統' },
+      { en: 'UAV', zh: '無人載具' },
+      { en: 'RPAS', zh: '遙控駕駛航空器系統' },
+      { en: 'PJE', zh: '跳傘活動' },
+      { en: 'GLD', zh: '滑翔機' },
+      { en: 'BLN', zh: '氣球' },
+      { en: 'MODEL ROCKET', zh: '模型火箭' },
+      { en: 'ACFT', zh: '航空器' },
+      { en: 'MIL', zh: '軍用/軍機' },
+      { en: 'CIV', zh: '民用' },
+      { en: 'TFC', zh: '航情/交通' },
+      { en: 'FLT', zh: '飛行' },
+      { en: 'AIRSPACE', zh: '空域' },
+      { en: 'BIRD', zh: '鳥擊/鳥類活動' },
+      { en: 'BIRDS', zh: '鳥群活動' },
+      { en: 'WILDLIFE', zh: '野生動物' },
+      { en: 'FOD', zh: '外來物損傷' },
+      { en: 'FICON', zh: '跑道場站狀況' },
+      { en: 'BA GOOD', zh: '煞車效應良好' },
+      { en: 'BA MEDIUM', zh: '煞車效應中等' },
+      { en: 'BA POOR', zh: '煞車效應不良' },
+      { en: 'BA NIL', zh: '煞車效應極差' },
+      { en: 'STANDING WATER', zh: '積水' },
+      { en: 'WATER', zh: '積水/水' },
+      { en: 'SN', zh: '雪' },
+      { en: 'SN REMOVAL', zh: '除雪作業' },
+      { en: 'ICE', zh: '結冰' },
+      { en: 'SLUSH', zh: '雪泥' },
+      { en: 'RUBBER DEPOSIT', zh: '胎膠沉積' },
+      { en: 'WX', zh: '天氣' },
+      { en: 'MET', zh: '氣象' },
+      { en: 'VIS', zh: '能見度' },
+      { en: 'CIG', zh: '雲幕高' },
+
+      // Prepositions, Scope, Time, Units & Directions
+      { en: 'BTN', zh: '介於…之間' },
+      { en: 'AND', zh: '與/及' },
+      { en: 'OR', zh: '或' },
+      { en: 'EXC', zh: '除外' },
+      { en: 'INCL', zh: '包含' },
+      { en: 'WI', zh: '在…範圍內' },
+      { en: 'WO', zh: '無/缺少' },
+      { en: 'BLW', zh: '低於' },
+      { en: 'ABV', zh: '高於' },
+      { en: 'BYD', zh: '超過/以外' },
+      { en: 'ADJ', zh: '相鄰/鄰近' },
+      { en: 'NEAR', zh: '附近' },
+      { en: 'WEF', zh: '自…起生效' },
+      { en: 'TIL', zh: '直到' },
+      { en: 'AFT', zh: '之後' },
+      { en: 'BEF', zh: '之前' },
+      { en: 'BFR', zh: '之前' },
+      { en: 'UFN', zh: '至另行通知' },
+      { en: 'PERM', zh: '永久有效' },
+      { en: 'EST', zh: '預估' },
+      { en: 'TEMPO', zh: '臨時/暫時' },
+      { en: 'NOW', zh: '目前(暫時)' },
+      { en: 'DLY', zh: '每日' },
+      { en: 'HJ', zh: '日出至日落' },
+      { en: 'HN', zh: '日落至日出' },
+      { en: 'HX', zh: '無固定時間' },
+      { en: 'HO', zh: '依作業需要提供服務' },
+      { en: 'H24', zh: '24小時全天候' },
+      { en: 'SR', zh: '日出' },
+      { en: 'SS', zh: '日落' },
+      { en: 'MON', zh: '週一' },
+      { en: 'TUE', zh: '週二' },
+      { en: 'WED', zh: '週三' },
+      { en: 'THU', zh: '週四' },
+      { en: 'FRI', zh: '週五' },
+      { en: 'SAT', zh: '週六' },
+      { en: 'SUN', zh: '週日' },
+      { en: 'GND', zh: '地面' },
+      { en: 'AMSL', zh: '平均海平面以上' },
+      { en: 'AGL', zh: '離地高度' },
+      { en: 'MSL', zh: '平均海平面' },
+      { en: 'FL', zh: '飛航空層' },
+      { en: 'UNL', zh: '無限高' },
+      { en: 'ALT', zh: '高度' },
+      { en: 'HGT', zh: '高' },
+      { en: 'ELEV', zh: '標高' },
+      { en: 'UTC', zh: '世界協調時間' },
+      { en: 'RAD', zh: '半徑' },
+      { en: 'DIST', zh: '距離' },
+      { en: 'PSN', zh: '位置' },
+      { en: 'COORD', zh: '座標' },
+      { en: 'CENTRE', zh: '中心點' },
+      { en: 'CENTERED AT', zh: '中心位於' },
+      { en: 'NM', zh: '浬' },
+      { en: 'FT', zh: '呎' },
+      { en: 'KM', zh: '公里' },
+      { en: 'KT', zh: '節' },
+      { en: 'DEG', zh: '度' },
+      { en: 'HR', zh: '小時' },
+      { en: 'ALL', zh: '全部' },
+      { en: 'ENTR', zh: '整段/全部' },
+      { en: 'PART', zh: '部分' },
+      { en: 'PORTION', zh: '部分區段' },
+      { en: 'FST', zh: '前段/第一' },
+      { en: 'LST', zh: '末段/最後' },
+      { en: 'MID', zh: '中段' },
+      { en: 'HALF', zh: '一半' },
+      { en: 'NORTH', zh: '北' },
+      { en: 'SOUTH', zh: '南' },
+      { en: 'EAST', zh: '東' },
+      { en: 'WEST', zh: '西' },
+      { en: 'NORTHEAST', zh: '東北' },
+      { en: 'NORTHWEST', zh: '西北' },
+      { en: 'SOUTHEAST', zh: '東南' },
+      { en: 'SOUTHWEST', zh: '西南' },
+      { en: 'LEFT', zh: '左側' },
+      { en: 'RIGHT', zh: '右側' },
+      { en: 'ONLY', zh: '僅限' },
+      { en: 'BOTH', zh: '雙向/兩側' },
+      { en: 'INFO', zh: '資訊' },
+      { en: 'TEL', zh: '電話' },
+      ...TAIWAN_AIRPORTS.map(a => ({ en: a.code, zh: a.zh }))
+    ];
+
+    // Extra English words & connectors for full-coverage EN -> CN translation
+    const EXTRA_EN_TO_ZH = {
+      'N': '北', 'NNE': '北北東', 'NE': '東北', 'ENE': '東北東',
+      'E': '東', 'ESE': '東南東', 'SE': '東南', 'SSE': '南南東',
+      'S': '南', 'SSW': '南南西', 'SW': '西南', 'WSW': '西南西',
+      'W': '西', 'WNW': '西北西', 'NW': '西北', 'NNW': '北北西',
+      'NB': '北向', 'NEB': '東北向', 'EB': '東向', 'SEB': '東南向',
+      'SB': '南向', 'SWB': '西南向', 'WB': '西向', 'NWB': '西北向',
+      'IN': '於', 'ON': '在', 'AT': '於', 'OF': '的', 'TO': '至', 'FROM': '自',
+      'FOR': '供', 'WITH': '附帶', 'WITHOUT': '無', 'BY': '由', 'AS': '作為',
+      'IS': '為', 'ARE': '為', 'BE': '將', 'NOT': '不/非', 'NO': '無',
+      'THE': '', 'A': '', 'AN': '', 'AREA': '區域', 'AREAS': '區域',
+      'ZONE': '地帶', 'SECTOR': '區段', 'SEGMENT': '區段', 'END': '端',
+      'SIDE': '側', 'SIDES': '兩側', 'USE': '使用', 'USING': '使用', 'USED': '使用',
+      'MAY': '可能', 'WILL': '將', 'SHALL': '應', 'MUST': '必須', 'SHLD': '應',
+      'WORKING': '作業中', 'WORK': '施工', 'CONSTRUCTION': '施工',
+      'MAINTENANCE': '維護', 'OPERATIONAL': '運作中', 'OPERATION': '作業',
+      'OPERATIONS': '作業', 'NORMAL': '正常', 'ABNORMAL': '異常',
+      'AVAILABLE': '可用', 'UNAVAILABLE': '不可用', 'SERVICEABLE': '可用',
+      'LIGHT': '燈光', 'LIGHTS': '燈光', 'LIGHTED': '有燈光',
+      'RUNWAY': '跑道', 'TAXIWAY': '滑行道', 'AIRPORT': '機場',
+      'AIRCRAFT': '航空器', 'TRAFFIC': '航情', 'MILITARY': '軍用', 'CIVIL': '民用',
+      'APPROACH': '進場', 'DEPARTURE': '離場', 'ARRIVAL': '到場',
+      'THRESHOLD': '跑道頭', 'SURFACE': '道面', 'DAILY': '每日',
+      'TEMPORARY': '臨時', 'PERMANENT': '永久', 'BETWEEN': '介於',
+      'EXCEPT': '除外', 'WITHIN': '範圍內', 'BELOW': '低於', 'ABOVE': '高於',
+      'GROUND': '地面', 'UNLIMITED': '無限高', 'RADIUS': '半徑',
+      'POSITION': '位置', 'FREQUENCY': '頻率', 'CONTACT': '聯絡',
+      'CAUTION': '注意', 'CANCEL': '取消', 'CANCELLED': '已取消',
+      'ACTIVE': '啟用中', 'ACTIVATED': '已啟用', 'DEACTIVATED': '已解除',
+      'FIRING': '射擊', 'EXERCISE': '演習', 'DRONE': '無人機',
+      'PARACHUTE': '跳傘', 'OBSTACLE': '障礙物', 'HEIGHT': '高度',
+      'LENGTH': '長度', 'WIDTH': '寬度', 'WEIGHT': '重量', 'WINGSPAN': '翼展',
+      'MTOW': '最大起飛重量', 'HRS': '小時', 'MINS': '分鐘', 'SEC': '秒',
+      'M': '公尺', 'SM': '法定哩', 'LCL': '當地時間', 'LOCAL': '當地'
+    };
+
+    // =========================================================================
+    // 2. DOM Elements & State
+    // =========================================================================
+    const notamInput = document.getElementById('notamInput');
+    const directionText = document.getElementById('directionText');
+    const directionBadge = document.getElementById('directionBadge');
+    const toggleDirBtn = document.getElementById('toggleDirBtn');
+    const autocompleteBar = document.getElementById('autocompleteBar');
+    const autocompleteList = document.getElementById('autocompleteList');
+    const typingTokenLabel = document.getElementById('typingTokenLabel');
+    const idleHint = document.getElementById('idleHint');
+    const translateBtn = document.getElementById('translateBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const outputCard = document.getElementById('outputCard');
+    const outputTitle = document.getElementById('outputTitle');
+    const outputText = document.getElementById('outputText');
+    const copyBtn = document.getElementById('copyBtn');
+    const copyBtnText = document.getElementById('copyBtnText');
+    const toast = document.getElementById('toast');
+    const dictCountBadge = document.getElementById('dictCountBadge');
+
+    dictCountBadge.textContent = `內建字庫 ${NOTAM_DICT.length + Object.keys(EXTRA_EN_TO_ZH).length} 詞`;
+
+    let manualDirection = null;
+    let currentSuggestions = [];
+
+    const SAMPLES = {
+      cn1: '新竹機場 05/23 跑道因施工關閉，軍機除外，航機可能延誤。',
+      en1: 'E) RWY 05L/23R CLSD DUE TO WIP, EXC MIL ACFT. TFC MAY BE DELAYED.'
+    };
+
+    let toastTimer = null;
+    function showToast(msg) {
+      toast.textContent = msg;
+      toast.classList.remove('opacity-0');
+      toast.classList.add('opacity-100');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => {
+        toast.classList.remove('opacity-100');
+        toast.classList.add('opacity-0');
+      }, 1800);
+    }
+
+    // =========================================================================
+    // 3. Direction Detection & Prioritized English Quick-Pick
+    // =========================================================================
+    function detectDirection(text) {
+      if (manualDirection) return manualDirection;
+      if (!text.trim()) return null;
+      return /[\u4e00-\u9fff]/.test(text) ? 'cn2en' : 'en2cn';
+    }
+
+    function updateDirectionBadge() {
+      const dir = detectDirection(notamInput.value);
+      const isManual = Boolean(manualDirection);
+      const prefix = isManual ? '手動鎖定：' : '自動偵測：';
+      if (!dir) {
+        directionText.textContent = '自動偵測：等待輸入';
+        directionBadge.className = 'inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-slate-200 text-slate-700';
+      } else if (dir === 'cn2en') {
+        directionText.textContent = `${prefix}中文 → 英文飛航公告內容`;
+        directionBadge.className = 'inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-sky-100 text-sky-800';
+      } else {
+        directionText.textContent = `${prefix}英文 NOTAM → 繁體中文`;
+        directionBadge.className = 'inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800';
+      }
+    }
+
+    function getCurrentEnglishToken() {
+      const pos = notamInput.selectionStart;
+      const before = notamInput.value.slice(0, pos);
+      const match = before.match(/([A-Za-z0-9/-]+)$/);
+      return match ? { token: match[1], start: pos - match[1].length, end: pos } : null;
+    }
+
+    function updateAutocomplete() {
+      const info = getCurrentEnglishToken();
+      if (!info || info.token.length < 1) {
+        autocompleteBar.classList.add('hidden');
+        idleHint.classList.remove('hidden');
+        currentSuggestions = [];
+        return;
+      }
+
+      const q = info.token.toUpperCase();
+      const prefixMatches = [];
+      const containsMatches = [];
+
+      for (const item of NOTAM_DICT) {
+        const up = item.en.toUpperCase();
+        if (up === q) continue;
+        if (up.startsWith(q)) {
+          prefixMatches.push(item);
+        } else if (up.includes(q)) {
+          containsMatches.push(item);
+        }
+      }
+
+      const matches = [...prefixMatches, ...containsMatches].slice(0, 12);
+
+      if (matches.length === 0) {
+        autocompleteBar.classList.add('hidden');
+        idleHint.classList.remove('hidden');
+        currentSuggestions = [];
+        return;
+      }
+
+      currentSuggestions = matches;
+      typingTokenLabel.textContent = `相符字首：${info.token}`;
+      autocompleteList.innerHTML = matches.map((item, idx) => `
+        <button type="button" data-complete="${item.en}" class="ac-chip inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs border transition cursor-pointer ${
+          idx === 0
+            ? 'bg-sky-600 border-sky-700 text-white font-semibold shadow-sm'
+            : 'bg-white border-sky-200 hover:border-sky-400 hover:bg-sky-50 text-slate-800'
+        }">
+          <span class="font-mono-code">${item.en}</span>
+          <span class="text-[11px] ${idx === 0 ? 'text-sky-100' : 'text-slate-500'} font-normal">${item.zh}</span>
+        </button>
+      `).join('');
+
+      autocompleteBar.classList.remove('hidden');
+      idleHint.classList.add('hidden');
+    }
+
+    function insertCompletion(word) {
+      const val = notamInput.value;
+      const info = getCurrentEnglishToken();
+      const start = info ? info.start : notamInput.selectionStart;
+      const end = info ? info.end : notamInput.selectionEnd;
+
+      const before = val.slice(0, start);
+      const after = val.slice(end);
+      const needTrailingSpace = after.length === 0 || !/^[\s\n,.]/.test(after);
+      const inserted = word + (needTrailingSpace ? ' ' : '');
+
+      notamInput.value = before + inserted + after;
+      const newPos = before.length + inserted.length;
+      notamInput.focus();
+      notamInput.setSelectionRange(newPos, newPos);
+
+      updateDirectionBadge();
+      updateAutocomplete();
+    }
+
+    // =========================================================================
+    // 4. Bidirectional Content Translation Engine (Full Coverage)
+    // =========================================================================
+    function translateCnToNotamContent(raw) {
+      let text = raw.trim();
+      const parts = [];
+
+      let airportCode = null;
+      const icaoMatch = text.match(/\b(RC[A-Z]{2})\b/i);
+      if (icaoMatch) {
+        airportCode = icaoMatch[1].toUpperCase();
+      } else {
+        for (const a of TAIWAN_AIRPORTS) {
+          if (a.aliases.some(alias => text.includes(alias))) {
+            airportCode = a.code;
+            break;
+          }
+        }
+      }
+
+      const radMatch = text.match(/半徑\s*(\d+(?:\.\d+)?)\s*(?:浬|海浬|NM)/i);
+      const rwyMatch = text.match(/(\d{2}[LRC]?(?:\/\d{2}[LRC]?)?)\s*跑道|跑道\s*(\d{2}[LRC]?(?:\/\d{2}[LRC]?)?)/i);
+      const twyMatch = text.match(/([A-Z]\d?)\s*滑行道|滑行道\s*([A-Z]\d?)/i);
+
+      if (/火砲|火炮|實彈射擊|射擊/.test(text)) {
+        let p = 'GUN FRNG WILL TAKE PLACE';
+        if (radMatch && airportCode) p += ` WI ${radMatch[1]}NM RAD OF ${airportCode}`;
+        else if (airportCode) p += ` AT ${airportCode}`;
+        parts.push(p);
+      } else if (/無人機|遙控無人機|UAS|UAV/i.test(text)) {
+        let p = 'UNMANNED ACFT (UAS) ACT WILL TAKE PLACE';
+        if (radMatch && airportCode) p += ` WI ${radMatch[1]}NM RAD OF ${airportCode}`;
+        else if (airportCode) p += ` AT ${airportCode}`;
+        parts.push(p);
+      } else if (/空中演習|演習/.test(text)) {
+        let p = 'MIL AIR EXER WILL TAKE PLACE';
+        if (radMatch && airportCode) p += ` WI ${radMatch[1]}NM RAD OF ${airportCode}`;
+        else if (airportCode) p += ` AT ${airportCode}`;
+        parts.push(p);
+      } else if (/跳傘/.test(text)) {
+        let p = 'PJE WILL TAKE PLACE';
+        if (radMatch && airportCode) p += ` WI ${radMatch[1]}NM RAD OF ${airportCode}`;
+        else if (airportCode) p += ` AT ${airportCode}`;
+        parts.push(p);
+      } else if (rwyMatch) {
+        const rwyId = (rwyMatch[1] || rwyMatch[2]).toUpperCase();
+        let p = `${airportCode ? airportCode + ' ' : ''}RWY ${rwyId}`;
+        if (/關閉|封閉|停用/.test(text)) p += ' CLSD';
+        else if (/恢復正常/.test(text)) p += ' RESUMED NML OPS';
+        else if (/可用/.test(text)) p += ' AVBL';
+        else if (/不可用/.test(text)) p += ' NOT AVBL';
+        parts.push(p);
+      } else if (twyMatch) {
+        const twyId = (twyMatch[1] || twyMatch[2]).toUpperCase();
+        let p = `${airportCode ? airportCode + ' ' : ''}TWY ${twyId}`;
+        const btnMatch = text.match(/介於\s*([A-Z0-9/]+)\s*(?:與|和|至)\s*([A-Z0-9/]+)\s*之間/);
+        if (btnMatch) p += ` BTN ${btnMatch[1].toUpperCase()} AND ${btnMatch[2].toUpperCase()}`;
+        if (/關閉|封閉/.test(text)) p += ' CLSD';
+        else if (/恢復正常/.test(text)) p += ' RESUMED NML OPS';
+        parts.push(p);
+      } else if (/停機坪/.test(text)) {
+        parts.push(`${airportCode ? airportCode + ' ' : ''}APRON ${/關閉/.test(text) ? 'CLSD' : 'WIP'}`);
+      } else if (/ILS|儀器降落/i.test(text)) {
+        parts.push(`${airportCode ? airportCode + ' ' : ''}ILS ${/故障|無法使用|停用/.test(text) ? 'U/S' : 'ON TEST, DO NOT USE'}`);
+      } else if (/PAPI|滑降燈/i.test(text)) {
+        parts.push(`${airportCode ? airportCode + ' ' : ''}PAPI ${/故障|無法使用/.test(text) ? 'U/S' : 'MAINT'}`);
+      } else if (/燈光|邊燈|進場燈/.test(text)) {
+        const lgtName = /邊燈/.test(text) ? 'RWY EDGE LGT' : (/進場燈/.test(text) ? 'ALS' : 'AD LGT');
+        parts.push(`${airportCode ? airportCode + ' ' : ''}${lgtName} ${/故障|無法使用/.test(text) ? 'U/S' : 'MAINT'}`);
+      } else if (/VOR/i.test(text)) {
+        parts.push(`${airportCode ? airportCode + ' ' : ''}VOR ${/故障|無法使用/.test(text) ? 'U/S' : 'MAINT'}`);
+      } else if (/TACAN/i.test(text)) {
+        parts.push(`${airportCode ? airportCode + ' ' : ''}TACAN ${/故障|無法使用/.test(text) ? 'U/S' : 'MAINT'}`);
+      } else if (/DME/i.test(text)) {
+        parts.push(`${airportCode ? airportCode + ' ' : ''}DME ${/故障|無法使用/.test(text) ? 'U/S' : 'MAINT'}`);
+      } else if (/起重機|吊車|障礙物/.test(text)) {
+        parts.push(`${airportCode ? airportCode + ' ' : ''}OBST CRANE ERECTED`);
+      } else if (/飛測/.test(text)) {
+        parts.push(`${airportCode ? airportCode + ' ' : ''}FLT CHECK WILL TAKE PLACE`);
+      } else if (/鳥擊|鳥群/.test(text)) {
+        parts.push(`${airportCode ? airportCode + ' ' : ''}CTN BIRD ACT`);
+      } else if (/機場關閉/.test(text)) {
+        parts.push(`${airportCode ? airportCode + ' ' : ''}AD CLSD`);
+      } else {
+        parts.push(`${airportCode ? airportCode + ' ' : ''}OPS NOTICE`);
+      }
+
+      if (/施工/.test(text)) parts.push('DUE TO WIP');
+      else if (/維護|保養/.test(text)) parts.push('DUE TO MAINT');
+      else if (/重鋪/.test(text)) parts.push('DUE TO RESURFACING');
+      else if (/漆劃|畫線/.test(text)) parts.push('DUE TO PAINTING');
+      else if (/割草/.test(text)) parts.push('DUE TO MOWING');
+      else if (/測試/.test(text) && !parts[0].includes('TEST')) parts.push('DUE TO TEST');
+
+      if (/軍機除外/.test(text)) parts.push(', EXC MIL ACFT');
+      else if (/民航機除外/.test(text)) parts.push(', EXC CIV ACFT');
+
+      if (/航機可能延誤|班機延誤/.test(text)) parts.push('. TFC MAY BE DELAYED');
+      if (/另行通知/.test(text)) parts.push(' UFN');
+      if (/永久/.test(text)) parts.push(' PERM');
+
+      const formatted = `E) ${parts.join(' ').replace(/\s+,/g, ',').replace(/\s+\./g, '.')}.`;
+      return {
+        title: '英文飛航公告內容 (Item E)',
+        output: formatted
+      };
+    }
+
+    function translateNotamContentToCn(raw) {
+      let bodyText = raw.trim();
+      const eMatch = bodyText.match(/E\)\s*([\s\S]+?)(?=\n[FG]\)|\s+[FG]\)|$)/i);
+      if (eMatch) {
+        bodyText = eMatch[1].trim();
+      } else {
+        bodyText = bodyText.replace(/^E\)\s*/i, '');
+      }
+
+      let zh = ' ' + bodyText.toUpperCase() + ' ';
+
+      // Layer 1: Multi-word NOTAM phrase rules (longest first)
+      const phraseRules = [
+        [/RESUMED NML OPS/g, '恢復正常運作'],
+        [/WILL TAKE PLACE/g, '將實施'],
+        [/DUE TO WIP/g, '因施工中'],
+        [/DUE TO MAINT/g, '因維護作業'],
+        [/DUE TO CONSTR/g, '因工程施工'],
+        [/DUE TO CONST/g, '因工程施工'],
+        [/DUE TO TEST/g, '因測試作業'],
+        [/DUE TO/g, '因'],
+        [/EXC MIL ACFT/g, '軍機除外'],
+        [/EXC CIV ACFT/g, '民航機除外'],
+        [/TFC MAY BE DELAYED/g, '航機可能延誤'],
+        [/TFC WILL BE SUSPENDED/g, '空中交通將暫停'],
+        [/DO NOT USE/g, '請勿使用'],
+        [/ON TEST/g, '測試中'],
+        [/NOT AVBL/g, '不可用'],
+        [/NOT LGTD/g, '無燈光標示'],
+        [/NOT MARKED/g, '無標示'],
+        [/NOT STD/g, '非標準'],
+        [/FLAGGED AND LGTD/g, '已插旗並設燈光標示'],
+        [/LGTD AND BARRICADED/g, '已設燈光及圍籬'],
+        [/IRREGULAR SFC/g, '道面不平整'],
+        [/NONMOVEMENT AREA/g, '非活動區'],
+        [/MOVEMENT AREA/g, '活動區'],
+        [/MANEUVERING AREA/g, '操作區'],
+        [/DISPLACED THR/g, '內移跑道頭'],
+        [/STANDING WATER/g, '積水'],
+        [/RUBBER DEPOSIT/g, '胎膠沉積'],
+        [/EDGE LGT/g, '邊燈'],
+        [/RUNUP PAD/g, '試車坪'],
+        [/SN REMOVAL/g, '除雪作業'],
+        [/FLT CHECK/g, '飛測'],
+        [/FLIGHT CHECK/g, '飛測'],
+        [/GUN FRNG/g, '火砲射擊'],
+        [/AIR EXER/g, '空中演習'],
+        [/MODEL ROCKET/g, '模型火箭'],
+        [/CENTERED AT/g, '中心位於'],
+        [/CHANGED TO/g, '變更為'],
+        [/REPLACED BY/g, '由以下取代'],
+        [/BA GOOD/g, '煞車效應良好'],
+        [/BA MEDIUM/g, '煞車效應中等'],
+        [/BA POOR/g, '煞車效應不良'],
+        [/BA NIL/g, '煞車效應極差'],
+        [/BTN\s+([A-Z0-9/-]+)\s+AND\s+([A-Z0-9/-]+)/g, '介於 $1 與 $2 之間'],
+        [/WI\s+(\d+(?:\.\d+)?)\s*NM\s+RAD\s+OF/g, '於 $1 浬半徑範圍內（中心點：']
+      ];
+      phraseRules.forEach(([re, rep]) => { zh = zh.replace(re, rep); });
+
+      // Layer 2: Pattern-aware units, coordinates & runway/taxiway numbers
+      zh = zh.replace(/(\d{4,6}(?:\.\d+)?[NS])\s*(\d{5,7}(?:\.\d+)?[EW])/g, '座標 $1 $2');
+      zh = zh.replace(/\bFL\s*(\d{2,3})\b/g, '飛航空層$1');
+      zh = zh.replace(/(\d+(?:\.\d+)?)\s*FT\b/g, '$1呎');
+      zh = zh.replace(/(\d+(?:\.\d+)?)\s*NM\b/g, '$1浬');
+      zh = zh.replace(/(\d+(?:\.\d+)?)\s*KM\b/g, '$1公里');
+      zh = zh.replace(/(\d+(?:\.\d+)?)\s*M\b/g, '$1公尺');
+      zh = zh.replace(/(\d+(?:\.\d+)?)\s*MHZ\b/g, '$1 MHz');
+      zh = zh.replace(/(\d+(?:\.\d+)?)\s*KHZ\b/g, '$1 kHz');
+      zh = zh.replace(/(\d+)\s*HR\b/g, '$1小時');
+      zh = zh.replace(/(\d+)\s*MIN\b/g, '$1分鐘');
+      zh = zh.replace(/\bRWY\s+(\d{2}[LRC]?(?:\/\d{2}[LRC]?)?)\b/g, '$1跑道');
+      zh = zh.replace(/\bTWY\s+([A-Z0-9]+(?:-[A-Z0-9]+)?)\b/g, '$1滑行道');
+
+      // Layer 3: Full dictionary lookup (sorted longest key first)
+      const combinedMap = {};
+      NOTAM_DICT.forEach(item => { combinedMap[item.en.toUpperCase()] = item.zh; });
+      Object.entries(EXTRA_EN_TO_ZH).forEach(([k, v]) => { combinedMap[k.toUpperCase()] = v; });
+
+      const sortedKeys = Object.keys(combinedMap).sort((a, b) => b.length - a.length);
+      for (const key of sortedKeys) {
+        const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const re = new RegExp(`(?<![A-Z0-9/])${escaped}(?![A-Z0-9/])`, 'g');
+        zh = zh.replace(re, combinedMap[key]);
+      }
+
+      // Clean up spacing & punctuation
+      zh = zh.replace(/\s+/g, ' ').replace(/\s+([,.)）])/g, '$1').replace(/([（(])\s+/g, '$1').trim();
+      if (zh.includes('（中心點：') && !zh.includes('）')) {
+        zh += '）';
+      }
+
+      return {
+        title: '繁體中文內容翻譯',
+        output: zh
+      };
+    }
+
+    function runTranslation() {
+      const raw = notamInput.value.trim();
+      if (!raw) {
+        showToast('請先輸入要翻譯的內容');
+        notamInput.focus();
+        return;
+      }
+      const dir = detectDirection(raw);
+      const res = dir === 'cn2en' ? translateCnToNotamContent(raw) : translateNotamContentToCn(raw);
+      outputTitle.textContent = res.title;
+      outputText.textContent = res.output;
+      outputCard.classList.remove('hidden');
+      lucide.createIcons();
+    }
+
+    // =========================================================================
+    // 5. Event Listeners
+    // =========================================================================
+    notamInput.addEventListener('input', () => {
+      updateDirectionBadge();
+      updateAutocomplete();
+    });
+
+    notamInput.addEventListener('click', updateAutocomplete);
+    notamInput.addEventListener('keyup', (e) => {
+      if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) {
+        updateAutocomplete();
+      }
+    });
+
+    notamInput.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        runTranslation();
+      } else if (e.key === 'Tab' && currentSuggestions.length > 0) {
+        e.preventDefault();
+        insertCompletion(currentSuggestions[0].en);
+      }
+    });
+
+    toggleDirBtn.addEventListener('click', () => {
+      const cur = detectDirection(notamInput.value);
+      manualDirection = cur === 'cn2en' ? 'en2cn' : 'cn2en';
+      updateDirectionBadge();
+      showToast(manualDirection === 'cn2en' ? '已切換：中文 → 英文內容' : '已切換：英文內容 → 繁體中文');
+    });
+
+    autocompleteList.addEventListener('click', (e) => {
+      const btn = e.target.closest('.ac-chip');
+      if (!btn) return;
+      insertCompletion(btn.dataset.complete);
+    });
+
+    document.querySelectorAll('.sample-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        manualDirection = null;
+        notamInput.value = SAMPLES[btn.dataset.sample];
+        updateDirectionBadge();
+        updateAutocomplete();
+        runTranslation();
+      });
+    });
+
+    translateBtn.addEventListener('click', runTranslation);
+
+    clearBtn.addEventListener('click', () => {
+      manualDirection = null;
+      notamInput.value = '';
+      outputCard.classList.add('hidden');
+      autocompleteBar.classList.add('hidden');
+      idleHint.classList.remove('hidden');
+      updateDirectionBadge();
+      notamInput.focus();
+    });
+
+    copyBtn.addEventListener('click', async () => {
+      const txt = outputText.textContent;
+      if (!txt) return;
+      try {
+        await navigator.clipboard.writeText(txt);
+      } catch {
+        const ta = document.createElement('textarea');
+        ta.value = txt;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+      copyBtnText.textContent = '已複製';
+      showToast('已複製翻譯結果');
+      setTimeout(() => { copyBtnText.textContent = '複製'; }, 1500);
+    });
+
+    updateDirectionBadge();
+    lucide.createIcons();
+  </script>
+</body>
+</html>
